@@ -21,9 +21,9 @@ jobs:
       with:
         node-version: '20'
 
-    # 3. Устанавливаем две библиотеки для парсинга (занимает пару секунд)
+        # 3. Устанавливаем библиотеки для парсинга
     - name: Install dependencies
-      run: npm install axios cheerio
+      run: npm install cheerio
 
     # 4. Запускаем наш ранее написанный скрипт
     - name: Run parser
