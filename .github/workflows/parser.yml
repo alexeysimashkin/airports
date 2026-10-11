@@ -1,0 +1,38 @@
+name: Airport Status Parser
+
+on:
+  schedule:
+    # Запуск каждую минуту (cron-расписание)
+    - cron: '* * * * *'
+  workflow_dispatch: # Позволяет запускать робота вручную кнопкой в интерфейсе GitHub
+
+jobs:
+  parse-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Скачиваем файлы нашего репозитория на виртуальный сервер GitHub
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. Устанавливаем Node.js окружение
+    - name: Setup Node.js
+      uses: actions/with-node@v4
+      with:
+        node-version: '20'
+
+    # 3. Устанавливаем две библиотеки для парсинга (занимает пару секунд)
+    - name: Install dependencies
+      run: npm install axios cheerio
+
+    # 4. Запускаем наш ранее написанный скрипт
+    - name: Run parser
+      run: node parser.js
+
+    # 5. Если файл status.json изменился, робот сам делает коммит и сохраняет изменения в репозиторий
+    - name: Commit and Push changes
+      run: |
+        git config --global user.name "Airport-Bot"
+        git config --global user.email "bot@github.com"
+        git add status.json
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Автообновление статусов аэропортов [Msk Time]" && git push)
