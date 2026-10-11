@@ -107,7 +107,7 @@ async function startParser() {
         console.log('Запуск парсера. Текущий ID в базе: ' + lastId);
 
         // Скачиваем виджет канала
-        const html = await fetchPage('https://t.me');
+        const html = await fetchPage('https://t.me/favt_info');
         
         // Разрезаем страницу на отдельные сообщения по тегу виджета
         const parts = html.split('class="tgme_widget_message_wrap');
