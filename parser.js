@@ -1,7 +1,8 @@
 const fs = require('fs');
 const https = require('https');
+const cheerio = require('cheerio'); // Используем cheerio для надежного разбора HTML
 
-// Исправленный словарь аэропортов РФ со всеми запятыми
+// Наш полный словарь аэропортов РФ
 const airportKeywords = {
     'Шереметьево (им. А.С. Пушкина)': ['шереметьев'],
     'Внуково (им. А.Н. Туполева)': ['внуков'],
@@ -37,7 +38,7 @@ const airportKeywords = {
     'Орск': ['орск'],
     'Киров (Победилово)': ['победилов', 'киров'],
     'Ижевск': ['ижевск'],
-    'Ульяновск (Баратаевка им. Н.М. Карамзина)': ['баратаевк', 'ульяновск'],
+    'Ульяновск (Баратаевка им. N.М. Карамзина)': ['баратаевк', 'ульяновск'],
     'Сочи (Адлер им. В.И. Севастьянова)': ['сочи', 'адлер'],
     'Краснодар (Пашковский им. Екатерины II)': ['краснодар', 'пашковск'],
     'Анапа (Витязево им. В.К. Коккинаки)': ['анап', 'витязев'],
@@ -76,7 +77,7 @@ function formatToMSK(isoString) {
 
 function fetchPage(url) {
     return new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+        https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => resolve(data));
@@ -92,48 +93,46 @@ async function startParser() {
 
         const dbData = JSON.parse(fs.readFileSync('status.json', 'utf8'));
         let lastId = dbData.lastScrapedPostId || 0;
-        let airports = dbData.airports || [];
+        let airports = dbData.airports ||;
 
-        // Скачиваем публичную веб-версию канала favt_info
+        console.log(`Старт парсера. Текущий ID в базе: ${lastId}`);
+
+        // Загружаем веб-версию канала
         const html = await fetchPage('https://t.me');
-        
-        const messageRegex = /<div class="tgme_widget_message_wrap[^>]*>([\s\(\S\)]*?)<\/div>\s*<\/div>\s*<\/div>/g;
-        const idRegex = /data-post="favt_info\/(\d+)"/;
-        const textRegex = /<div class="tgme_widget_message_text[^>]*>([\s\(\S\)]*?)<\/div>/;
-        const timeRegex = /<time[^>]*datetime="([^"]+)"/;
+        const \$ = cheerio.load(html);
+        const newPosts =;
 
-        const newPosts = [];
-        let match;
+        // Ищем посты через селекторы cheerio
+        \$('.tgme_widget_message').each((index, element) => {
+            const href = \$(element).attr('data-post');
+            if (!href) return;
 
-        while ((match = messageRegex.exec(html)) !== null) {
-            const block = match[1];
+            const postId = parseInt(href.split('/').pop(), 10);
+            if (postId <= lastId) return;
+
+            const textBlock = \$(element).find('.tgme_widget_message_text');
+            if (textBlock.length === 0) return;
             
-            const idMatch = idRegex.exec(block);
-            if (!idMatch) continue;
-            const postId = parseInt(idMatch[1], 10);
-            
-            if (postId <= lastId) continue;
+            const text = textBlock.text().toLowerCase();
+            const isoTime = \$(element).find('time').attr('datetime');
 
-            const textMatch = textRegex.exec(block);
-            if (!textMatch) continue;
-            const text = textMatch[1].replace(/<[^>]*>/g, '').toLowerCase();
+            if (text && isoTime) {
+                newPosts.push({ id: postId, text, isoTime });
+            }
+        });
 
-            const timeMatch = timeRegex.exec(block);
-            if (!timeMatch) continue;
-            const isoTime = timeMatch[1];
-
-            newPosts.push({ id: postId, text, isoTime });
-        }
+        console.log(`Найдено новых сообщений в ленте: ${newPosts.length}`);
 
         newPosts.sort((a, b) => a.id - b.id);
 
         if (newPosts.length === 0) {
-            console.log('Новых постов в Telegram-канале нет.');
+            console.log('Новых постов для обработки нет.');
             return;
         }
 
         newPosts.forEach(post => {
             let statusFound = null;
+            console.log(`Проверяем пост ID ${post.id}: "${post.text.substring(0, 80)}..."`);
 
             if (post.text.includes('введены ограничения')) {
                 statusFound = 'закрыт';
@@ -145,6 +144,7 @@ async function startParser() {
 
             if (statusFound) {
                 const formattedTime = formatToMSK(post.isoTime);
+                console.log(`-> Найден статус: "${statusFound}" для времени ${formattedTime}`);
 
                 for (const [officialName, searchWords] of Object.entries(airportKeywords)) {
                     const isMentioned = searchWords.some(word => post.text.includes(word));
@@ -155,12 +155,9 @@ async function startParser() {
                             airport = { name: officialName, status: '', time: '' };
                             airports.push(airport);
                         }
-                        
-                        // Если ограничения СНЯТЫ, то согласно нашей стратегии, 
-                        // мы можем сбросить статус обратно на "открыт".
                         airport.status = statusFound;
                         airport.time = formattedTime;
-                        console.log(`Обновлен статус: ${officialName} -> ${statusFound} (${formattedTime})`);
+                        console.log(`   [ОБНОВЛЕНИЕ]: ${officialName} -> ${statusFound}`);
                     }
                 }
             }
@@ -173,7 +170,7 @@ async function startParser() {
         };
 
         fs.writeFileSync('status.json', JSON.stringify(updatedDb, null, 2), 'utf8');
-        console.log(`База данных успешно обновлена. Текущий ID поста: ${lastId}`);
+        console.log(`База успешно обновлена в файле. Новый lastScrapedPostId: ${lastId}`);
 
     } catch (error) {
         console.error('Критическая ошибка работы скрипта:', error.message);
