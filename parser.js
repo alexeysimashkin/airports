@@ -103,18 +103,18 @@ async function startParser() {
         const newPosts =;
 
         // Ищем посты через селекторы cheerio
-        \$('.tgme_widget_message').each((index, element) => {
+        $('.tgme_widget_message').each((index, element) => {
             const href = \$(element).attr('data-post');
             if (!href) return;
 
             const postId = parseInt(href.split('/').pop(), 10);
             if (postId <= lastId) return;
 
-            const textBlock = \$(element).find('.tgme_widget_message_text');
+            const textBlock = $(element).find('.tgme_widget_message_text');
             if (textBlock.length === 0) return;
             
             const text = textBlock.text().toLowerCase();
-            const isoTime = \$(element).find('time').attr('datetime');
+            const isoTime = $(element).find('time').attr('datetime');
 
             if (text && isoTime) {
                 newPosts.push({ id: postId, text, isoTime });
