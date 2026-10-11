@@ -1,20 +1,24 @@
 const fs = require('fs');
 const https = require('https');
-const cheerio = require('cheerio');
 
-// Словарь аэропортов РФ (Европейская часть, Урал, Сибирь до Новосибирска)
+// ПОЛНЫЙ словарь аэропортов РФ (Европейская часть, Урал, Сибирь до Новосибирска)
 const airportKeywords = {
+    // === МОСКВА (МСК) ===
     'Шереметьево (им. А.С. Пушкина)': ['шереметьев'],
     'Внуково (им. А.Н. Туполева)': ['внуков'],
     'Домодедово (им. М.В. Ломоносова)': ['домодедов'],
     'Жуковский (Раменское)': ['жуковск', 'раменск'],
+
+    // === СЕВЕРО-ЗАПАД ===
     'Пулково (Санкт-Петербург)': ['пулков'],
     'Калининград (Храброво им. Елизаветы Петровны)': ['храбров', 'калининград'],
     'Архангельск (Талаги им. Ф.А. Абрамова)': ['талаг', 'архангельск'],
     'Мурманск (им. Николая II)': ['мурманск'],
-    'Петрозаводск (Бесовец)': ['петрозаводск', 'бесовец'],
+    'Petrozavodsk (Бесовец)': ['петрозаводск', 'бесовец'],
     'Псков (Кресты им. княгини Ольги)': ['псков', 'кресты'],
     'Череповец': ['череповец'],
+
+    // === ЦЕНТРАЛЬНАЯ РОССИЯ И ЮГ ===
     'Калуга (Грабцево им. К.Э. Циолковского)': ['калуг', 'grabcevo'],
     'Ярославль (Туношна)': ['туношн', 'ярославль'],
     'Иваново (Южный)': ['иванов'],
@@ -26,6 +30,8 @@ const airportKeywords = {
     'Брянск': ['брянск'],
     'Тамбов (Донское)': ['тамбов', 'донск'],
     'Пенза (им. В.Г. Белинского)': ['пенз'],
+
+    // === ПОВОЛЖЬЕ ===
     'Казань (им. Г. Тукая)': ['казан'],
     'Нижнекамск / Набережные Челны (Бегишево)': ['бегишев', 'нижнекамск'],
     'Нижний Новгород (Стригино им. В.П. Чкалова)': ['стригин', 'нижн', 'новгород'],
@@ -39,6 +45,8 @@ const airportKeywords = {
     'Киров (Победилово)': ['победилов', 'киров'],
     'Ижевск': ['ижевск'],
     'Ульяновск (Баратаевка им. Н.М. Карамзина)': ['баратаевк', 'ульяновск'],
+
+    // === ЮЖНЫЙ И КАВКАЗСКИЙ ОКРУГА ===
     'Сочи (Адлер им. В.И. Севастьянова)': ['сочи', 'адлер'],
     'Краснодар (Пашковский им. Екатерины II)': ['краснодар', 'пашковск'],
     'Анапа (Витязево им. В.К. Коккинаки)': ['анап', 'витязев'],
@@ -48,9 +56,11 @@ const airportKeywords = {
     'Минеральные Воды (им. М.Ю. Лермонтова)': ['минеральн', 'вод'],
     'Владикавказ (Беслан)': ['беслан', 'владикавказ'],
     'Махачкала (Уйташ им. Амет-Хана Султана)': ['уйташ', 'махачкал'],
-    'Грозный (Северный им. А.А. Кадырова)': ['grozn'],
+    'Грозный (Северный им. А.А. Кадырова)': ['grozn', 'грозн'],
     'Нальчик': ['нальчик'],
     'Элиста': ['элист'],
+
+    // === УРАЛ ===
     'Екатеринбург (Кольцово им. А.Н. Демидова)': ['кольцов', 'екатеринбург'],
     'Челябинск (Баландино им. И.В. Курчатова)': ['баландин', 'челябинск'],
     'Тюмень (Рощино им. Д.И. Менделеева)': ['рощин', 'тюмен'],
@@ -60,17 +70,19 @@ const airportKeywords = {
     'Магнитогорск': ['магнитогорск'],
     'Новый Уренгой (им. И.М. Губкина)': ['уренгой'],
     'Ноябрьск': ['ноябрьск'],
+
+    // === ЗАПАДНАЯ СИБИРЬ ===
     'Новосибирск (Толмачёво им. А.И. Покрышкина)': ['толмачев', 'новосибирск'],
     'Омск (Центральный им. Д.М. Карбышева)': ['омск'],
     'Томск (Богашево им. Н.И. Камова)': ['богашев', 'томск'],
     'Кемерово (им. А.А. Леонова)': ['кемеров'],
     'Новокузнецк (Спиченково им. Б.В. Волынова)': ['спиченков', 'новокузнецк'],
     'Барнаул (Михайловка им. Г.С. Титова)': ['барнаул', 'михайловк'],
-    'Горно-Altayck': ['алтайск']
+    'Горно-Алтайск': ['алтайск']
 };
 
 function formatToMSK(isoString) {
-    const date = new Date(isoString);
+    const date = isoString ? new Date(isoString) : new Date();
     const options = { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' };
     return date.toLocaleTimeString('ru-RU', options) + ' МСК';
 }
@@ -87,51 +99,58 @@ function fetchPage(url) {
 
 async function startParser() {
     try {
-        if (!fs.existsSync('status.json')) {
-            throw new Error('Файл status.json не найден!');
-        }
-
+        if (!fs.existsSync('status.json')) throw new Error('Файл status.json не найден!');
         const dbData = JSON.parse(fs.readFileSync('status.json', 'utf8'));
         let lastId = dbData.lastScrapedPostId || 0;
         let airports = dbData.airports || [];
 
-        console.log('Парсер успешно запущен. Последний ID: ' + lastId);
+        console.log('Запуск парсера. Текущий ID в базе: ' + lastId);
 
-        const html = await fetchPage('https://t.me/favt_info');
-        const tgPage = cheerio.load(html);
+        // Скачиваем виджет канала
+        const html = await fetchPage('https://t.me');
+        
+        // Разрезаем страницу на отдельные сообщения по тегу виджета
+        const parts = html.split('class="tgme_widget_message_wrap');
+        // Убираем шапку страницы
+        parts.shift(); 
+
         const newPosts = [];
 
-        // Перебираем посты
-        tgPage('.tgme_widget_message').each((index, element) => {
-            const href = tgPage(element).attr('data-post');
-            if (!href) return;
+        parts.forEach(part => {
+            // Вытаскиваем ID поста
+            const idMatch = part.match(/data-post="favt_info\/(\d+)"/);
+            if (!idMatch) return;
+            const postId = parseInt(idMatch[1], 10);
 
-            const postId = parseInt(href.split('/').pop(), 10);
             if (postId <= lastId) return;
 
-            const textBlock = tgPage(element).find('.tgme_widget_message_text');
-            if (textBlock.length === 0) return;
+            // Вырезаем блок с текстом сообщения
+            const textBlockMatch = part.match(/<div class="tgme_widget_message_text[^>]*>([\s\(\S\)]*?)<\/div>/);
+            if (!textBlockMatch) return;
             
-            const text = textBlock.text().toLowerCase();
-            const isoTime = tgPage(element).find('time').attr('datetime');
+            // Очищаем текст от HTML тегов
+            const cleanText = textBlockMatch[1].replace(/<[^>]*>/g, '').toLowerCase();
 
-            if (text && isoTime) {
-                newPosts.push({ id: postId, text: text, isoTime: isoTime });
-            }
+            // Вытаскиваем время
+            const timeMatch = part.match(/<time[^>]*datetime="([^"]+)"/);
+            const isoTime = timeMatch ? timeMatch[1] : new Date().toISOString();
+
+            newPosts.push({ id: postId, text: cleanText, isoTime: isoTime });
         });
 
-        console.log('Новых сообщений обнаружено: ' + newPosts.length);
-
-        newPosts.sort((a, b) => a.id - b.id);
+        console.log('Найдено новых постов для анализа: ' + newPosts.length);
 
         if (newPosts.length === 0) {
             console.log('Все сообщения актуальны. Обновлений нет.');
             return;
         }
 
+        // Сортируем от старых к новым
+        newPosts.sort((a, b) => a.id - b.id);
+
         newPosts.forEach(post => {
             let statusFound = null;
-            console.log('Обработка сообщения ID ' + post.id);
+            console.log(`Разбор поста №${post.id}: ${post.text.substring(0, 60)}...`);
 
             if (post.text.includes('введены ограничения')) {
                 statusFound = 'закрыт';
@@ -155,7 +174,7 @@ async function startParser() {
                         }
                         airport.status = statusFound;
                         airport.time = formattedTime;
-                        console.log('-> Обновлен статус порта ' + officialName + ' на "' + statusFound + '"');
+                        console.log(` -> Обновлен аэропорт: ${officialName} -> ${statusFound} (${formattedTime})`);
                     }
                 }
             }
@@ -168,7 +187,7 @@ async function startParser() {
         };
 
         fs.writeFileSync('status.json', JSON.stringify(updatedDb, null, 2), 'utf8');
-        console.log('Синхронизация завершена успешно. Текущий ID: ' + lastId);
+        console.log('Файл status.json успешно сохранен. Новый ID: ' + lastId);
 
     } catch (error) {
         console.error('Ошибка исполнения:', error.message);
