@@ -93,7 +93,7 @@ async function startParser() {
 
         const dbData = JSON.parse(fs.readFileSync('status.json', 'utf8'));
         let lastId = dbData.lastScrapedPostId || 0;
-        let airports = dbData.airports ||;
+        let airports = dbData.airports || [];
 
         console.log(`Старт парсера. Текущий ID в базе: ${lastId}`);
 
