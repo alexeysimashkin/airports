@@ -97,7 +97,7 @@ async function startParser() {
 
         console.log('Парсер успешно запущен. Последний ID: ' + lastId);
 
-        const html = await fetchPage('https://t.me');
+        const html = await fetchPage('https://t.me/favt_info');
         const tgPage = cheerio.load(html);
         const newPosts = [];
 
