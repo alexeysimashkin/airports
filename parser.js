@@ -1,16 +1,12 @@
 const fs = require('fs');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const https = require('https');
 
-// Полный словарь аэропортов РФ (Европейская часть, Урал, Сибирь до Новосибирска)
+// Исправленный словарь аэропортов РФ со всеми запятыми
 const airportKeywords = {
-    // === МОСКВА (МСК) ===
     'Шереметьево (им. А.С. Пушкина)': ['шереметьев'],
     'Внуково (им. А.Н. Туполева)': ['внуков'],
     'Домодедово (им. М.В. Ломоносова)': ['домодедов'],
     'Жуковский (Раменское)': ['жуковск', 'раменск'],
-
-    // === СЕВЕРО-ЗАПАД ===
     'Пулково (Санкт-Петербург)': ['пулков'],
     'Калининград (Храброво им. Елизаветы Петровны)': ['храбров', 'калининград'],
     'Архангельск (Талаги им. Ф.А. Абрамова)': ['талаг', 'архангельск'],
@@ -18,11 +14,9 @@ const airportKeywords = {
     'Петрозаводск (Бесовец)': ['петрозаводск', 'бесовец'],
     'Псков (Кресты им. княгини Ольги)': ['псков', 'кресты'],
     'Череповец': ['череповец'],
-
-    // === ЦЕНТРАЛЬНАЯ РОССИЯ И ЮГ ===
-    'Калуга (Грабцево им. К.Э. Циолковского)': ['калуг', 'грабцево'],
+    'Калуга (Грабцево им. К.Э. Циолковского)': ['калуг', 'grabcevo'],
     'Ярославль (Туношна)': ['туношн', 'ярославль'],
-    'Иваново (Южный)': ['иванов', 'южный'],
+    'Иваново (Южный)': ['иванов'],
     'Кострома (Сокеркино)': ['костром', 'сокеркин'],
     'Липецк': ['липецк'],
     'Воронеж (Чертовицкое им. Петра I)': ['воронеж', 'чертовицк'],
@@ -31,14 +25,12 @@ const airportKeywords = {
     'Брянск': ['брянск'],
     'Тамбов (Донское)': ['тамбов', 'донск'],
     'Пенза (им. В.Г. Белинского)': ['пенз'],
-
-    // === ПОВОЛЖЬЕ ===
     'Казань (им. Г. Тукая)': ['казан'],
-    'Нижнекамск / Набережные Челны (Бегишево)': ['бегишево', 'нижнекамск'],
-    'Нижний Новгород (Стригино им. В.П. Чкалова)': ['стригин', 'нижн', 'новгород', 'чкалов'],
-    'Самара (Курумоч им. С.П. Королева)': ['курумоч', 'самара'],
+    'Нижнекамск / Набережные Челны (Бегишево)': ['бегишев', 'нижнекамск'],
+    'Нижний Новгород (Стригино им. В.П. Чкалова)': ['стригин', 'нижн', 'новгород'],
+    'Самара (Курумоч им. С.П. Королева)': ['курумоч', 'самар'],
     'Саратов (Гагарин)': ['гагарин', 'саратов'],
-    'Уфа (им. Мустая Карима)': ['уфa'], // Поддерживает латиницу/кириллицу
+    'Уфа (им. Мустая Карима)': ['уфа'],
     'Пермь (Большое Савино)': ['савино', 'пермь'],
     'Чебоксары (им. А.Г. Николаева)': ['чебоксар'],
     'Оренбург (Центральный им. Ю.А. Гагарина)': ['оренбург'],
@@ -46,35 +38,27 @@ const airportKeywords = {
     'Киров (Победилово)': ['победилов', 'киров'],
     'Ижевск': ['ижевск'],
     'Ульяновск (Баратаевка им. Н.М. Карамзина)': ['баратаевк', 'ульяновск'],
-
-    // === ЮЖНЫЙ И КАВКАЗСКИЙ ОКРУГА ===
     'Сочи (Адлер им. В.И. Севастьянова)': ['сочи', 'адлер'],
-    'Краснодар (Пашковский им. Екатерины II)': ['краснодар', 'пашковский'],
+    'Краснодар (Пашковский им. Екатерины II)': ['краснодар', 'пашковск'],
     'Анапа (Витязево им. В.К. Коккинаки)': ['анап', 'витязев'],
     'Волгоград (Гумрак)': ['гумрак', 'волгоград'],
     'Астрахань (Нариманово)': ['нариманов', 'астрахань'],
     'Ставрополь (им. А.В. Суворова)': ['ставрополь'],
-    'Минеральные Воды (им. М.Ю. Лермонтова)': ['минеральн', 'воды'],
+    'Минеральные Воды (им. М.Ю. Лермонтова)': ['минеральн', 'вод'],
     'Владикавказ (Беслан)': ['беслан', 'владикавказ'],
     'Махачкала (Уйташ им. Амет-Хана Султана)': ['уйташ', 'махачкал'],
     'Грозный (Северный им. А.А. Кадырова)': ['грозн'],
     'Нальчик': ['нальчик'],
     'Элиста': ['элист'],
-
-    // === УРАЛ ===
-    'Екатеринбург (Кольцово им. А.Н. Демидова)': ['кольцово', 'екатеринбург'],
-    'Челябинск (Баландино им. И.В. Курчатова)': ['баландино', 'челябинск'],
-    'Тюмень (Рощино им. Д.И. Менделеева)': ['рощино', 'тюмень'],
+    'Екатеринбург (Кольцово им. А.Н. Демидова)': ['кольцов', 'екатеринбург'],
+    'Челябинск (Баландино им. И.В. Курчатова)': ['баландин', 'челябинск'],
+    'Тюмень (Рощино им. Д.И. Менделеева)': ['рощин', 'тюмен'],
     'Сургут (им. Ф.К. Салманова)': ['сургут'],
     'Нижневартовск (им. В.И. Муравленко)': ['нижневартовск'],
     'Ханты-Мансийск': ['ханты', 'мансийск'],
     'Магнитогорск': ['магнитогорск'],
     'Новый Уренгой (им. И.М. Губкина)': ['уренгой'],
     'Ноябрьск': ['ноябрьск'],
-    'Урай': ['урай'],
-    'Сабетта': ['сабетта']
-
-    // === ЗАПАДНАЯ СИБИРЬ ===
     'Новосибирск (Толмачёво им. А.И. Покрышкина)': ['толмачев', 'новосибирск'],
     'Омск (Центральный им. Д.М. Карбышева)': ['омск'],
     'Томск (Богашево им. Н.И. Камова)': ['богашев', 'томск'],
@@ -84,62 +68,73 @@ const airportKeywords = {
     'Горно-Алтайск': ['алтайск']
 };
 
-// Функция перевода системного времени (ISO) в строку времени по Москве (ЧЧ:ММ МСК)
 function formatToMSK(isoString) {
     const date = new Date(isoString);
-    // Сдвиг на Московское время (UTC+3)
     const options = { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' };
     return date.toLocaleTimeString('ru-RU', options) + ' МСК';
 }
 
+function fetchPage(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => resolve(data));
+        }).on('error', (err) => reject(err));
+    });
+}
+
 async function startParser() {
     try {
-        // 1. Читаем текущую "базу данных" из файла
-        const dbData = JSON.parse(fs.readFileSync('status.json', 'utf8'));
-        let lastId = dbData.lastScrapedPostId;
-        let airports = dbData.airports;
+        if (!fs.existsSync('status.json')) {
+            throw new Error('Файл status.json не найден!');
+        }
 
-        // 2. Скачиваем веб-версию телеграм-канала Росавиации
-        const response = await axios.get('https://t.me', {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
-        });
-        const \$ = cheerio.load(response.data);
+        const dbData = JSON.parse(fs.readFileSync('status.json', 'utf8'));
+        let lastId = dbData.lastScrapedPostId || 0;
+        let airports = dbData.airports || [];
+
+        // Скачиваем публичную веб-версию канала favt_info
+        const html = await fetchPage('https://t.me');
+        
+        const messageRegex = /<div class="tgme_widget_message_wrap[^>]*>([\s\(\S\)]*?)<\/div>\s*<\/div>\s*<\/div>/g;
+        const idRegex = /data-post="favt_info\/(\d+)"/;
+        const textRegex = /<div class="tgme_widget_message_text[^>]*>([\s\(\S\)]*?)<\/div>/;
+        const timeRegex = /<time[^>]*datetime="([^"]+)"/;
 
         const newPosts = [];
+        let match;
 
-        // 3. Собираем посты со страницы
-        \$('.tgme_widget_message_wrap').each((index, element) => {
-            const messageElement = \$(element).find('.tgme_widget_message');
-            const href = messageElement.attr('data-post'); // Получаем ссылку вида "favt_info/12345"
-            if (!href) return;
-
-            const postId = parseInt(href.split('/').pop(), 10);
+        while ((match = messageRegex.exec(html)) !== null) {
+            const block = match[1];
             
-            // Отсекаем посты, которые мы уже когда-то обрабатывали
-            if (postId <= lastId) return;
+            const idMatch = idRegex.exec(block);
+            if (!idMatch) continue;
+            const postId = parseInt(idMatch[1], 10);
+            
+            if (postId <= lastId) continue;
 
-            const text = \$(element).find('.tgme_widget_message_text').text().toLowerCase();
-            const timeElement = \$(element).find('time');
-            const isoTime = timeElement.attr('datetime'); // Системное время публикации
+            const textMatch = textRegex.exec(block);
+            if (!textMatch) continue;
+            const text = textMatch[1].replace(/<[^>]*>/g, '').toLowerCase();
 
-            if (text && isoTime) {
-                newPosts.push({ id: postId, text, isoTime });
-            }
-        });
+            const timeMatch = timeRegex.exec(block);
+            if (!timeMatch) continue;
+            const isoTime = timeMatch[1];
 
-        // 4. Сортируем новые посты строго от старых к свежим (хронологический порядок)
+            newPosts.push({ id: postId, text, isoTime });
+        }
+
         newPosts.sort((a, b) => a.id - b.id);
 
         if (newPosts.length === 0) {
-            console.log('Новых постов за эту минуту нет.');
+            console.log('Новых постов в Telegram-канале нет.');
             return;
         }
 
-        // 5. Разбираем каждый новый пост
         newPosts.forEach(post => {
             let statusFound = null;
 
-            // Определяем статус по ключевым словам
             if (post.text.includes('введены ограничения')) {
                 statusFound = 'закрыт';
             } else if (post.text.includes('по согласованию')) {
@@ -148,41 +143,41 @@ async function startParser() {
                 statusFound = 'открыт';
             }
 
-            // Если нашли один из трех ключевых статусов, ищем аэропорты
             if (statusFound) {
                 const formattedTime = formatToMSK(post.isoTime);
 
-                // Проверяем каждый аэропорт из нашего списка
                 for (const [officialName, searchWords] of Object.entries(airportKeywords)) {
                     const isMentioned = searchWords.some(word => post.text.includes(word));
                     
                     if (isMentioned) {
-                        // Ищем аэропорт в нашей базе и обновляем его статус и время
-                        const airport = airports.find(ap => ap.name === officialName);
-                        if (airport) {
-                            airport.status = statusFound;
-                            airport.time = formattedTime;
-                            console.log(`Обновлен статус: ${officialName} -> ${statusFound} (${formattedTime})`);
+                        let airport = airports.find(ap => ap.name === officialName);
+                        if (!airport) {
+                            airport = { name: officialName, status: '', time: '' };
+                            airports.push(airport);
                         }
+                        
+                        // Если ограничения СНЯТЫ, то согласно нашей стратегии, 
+                        // мы можем сбросить статус обратно на "открыт".
+                        airport.status = statusFound;
+                        airport.time = formattedTime;
+                        console.log(`Обновлен статус: ${officialName} -> ${statusFound} (${formattedTime})`);
                     }
                 }
             }
-            
-            // Фиксируем ID обработанного поста
             lastId = post.id;
         });
 
-        // 6. Сохраняем обновленные данные обратно в файл status.json
         const updatedDb = {
             lastScrapedPostId: lastId,
             airports: airports
         };
 
         fs.writeFileSync('status.json', JSON.stringify(updatedDb, null, 2), 'utf8');
-        console.log(`База данных успешно обновлена. Последний обработанный пост ID: ${lastId}`);
+        console.log(`База данных успешно обновлена. Текущий ID поста: ${lastId}`);
 
     } catch (error) {
-        console.error('Ошибка в работе робота-парсера:', error.message);
+        console.error('Критическая ошибка работы скрипта:', error.message);
+        process.exit(1);
     }
 }
 
