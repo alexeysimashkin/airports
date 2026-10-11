@@ -100,7 +100,7 @@ async function startParser() {
         // Загружаем веб-версию канала
         const html = await fetchPage('https://t.me');
         const $ = cheerio.load(html);
-        const newPosts =;
+        const newPosts = [];
 
         // Ищем посты через селекторы cheerio
         $('.tgme_widget_message').each((index, element) => {
