@@ -1,8 +1,8 @@
 const fs = require('fs');
 const https = require('https');
-const cheerio = require('cheerio'); // Используем cheerio для надежного разбора HTML
+const cheerio = require('cheerio');
 
-// Наш полный словарь аэропортов РФ
+// Словарь аэропортов РФ (Европейская часть, Урал, Сибирь до Новосибирска)
 const airportKeywords = {
     'Шереметьево (им. А.С. Пушкина)': ['шереметьев'],
     'Внуково (им. А.Н. Туполева)': ['внуков'],
@@ -38,7 +38,7 @@ const airportKeywords = {
     'Орск': ['орск'],
     'Киров (Победилово)': ['победилов', 'киров'],
     'Ижевск': ['ижевск'],
-    'Ульяновск (Баратаевка им. N.М. Карамзина)': ['баратаевк', 'ульяновск'],
+    'Ульяновск (Баратаевка им. Н.М. Карамзина)': ['баратаевк', 'ульяновск'],
     'Сочи (Адлер им. В.И. Севастьянова)': ['сочи', 'адлер'],
     'Краснодар (Пашковский им. Екатерины II)': ['краснодар', 'пашковск'],
     'Анапа (Витязево им. В.К. Коккинаки)': ['анап', 'витязев'],
@@ -48,7 +48,7 @@ const airportKeywords = {
     'Минеральные Воды (им. М.Ю. Лермонтова)': ['минеральн', 'вод'],
     'Владикавказ (Беслан)': ['беслан', 'владикавказ'],
     'Махачкала (Уйташ им. Амет-Хана Султана)': ['уйташ', 'махачкал'],
-    'Грозный (Северный им. А.А. Кадырова)': ['грозн'],
+    'Грозный (Северный им. А.А. Кадырова)': ['grozn'],
     'Нальчик': ['нальчик'],
     'Элиста': ['элист'],
     'Екатеринбург (Кольцово им. А.Н. Демидова)': ['кольцов', 'екатеринбург'],
@@ -66,7 +66,7 @@ const airportKeywords = {
     'Кемерово (им. А.А. Леонова)': ['кемеров'],
     'Новокузнецк (Спиченково им. Б.В. Волынова)': ['спиченков', 'новокузнецк'],
     'Барнаул (Михайловка им. Г.С. Титова)': ['барнаул', 'михайловк'],
-    'Горно-Алтайск': ['алтайск']
+    'Горно-Altayck': ['алтайск']
 };
 
 function formatToMSK(isoString) {
@@ -95,44 +95,43 @@ async function startParser() {
         let lastId = dbData.lastScrapedPostId || 0;
         let airports = dbData.airports || [];
 
-        console.log(`Старт парсера. Текущий ID в базе: ${lastId}`);
+        console.log('Парсер успешно запущен. Последний ID: ' + lastId);
 
-        // Загружаем веб-версию канала
         const html = await fetchPage('https://t.me');
-        const $ = cheerio.load(html);
+        const tgPage = cheerio.load(html);
         const newPosts = [];
 
-        // Ищем посты через селекторы cheerio
-        $('.tgme_widget_message').each((index, element) => {
-            const href = \$(element).attr('data-post');
+        // Перебираем посты
+        tgPage('.tgme_widget_message').each((index, element) => {
+            const href = tgPage(element).attr('data-post');
             if (!href) return;
 
             const postId = parseInt(href.split('/').pop(), 10);
             if (postId <= lastId) return;
 
-            const textBlock = $(element).find('.tgme_widget_message_text');
+            const textBlock = tgPage(element).find('.tgme_widget_message_text');
             if (textBlock.length === 0) return;
             
             const text = textBlock.text().toLowerCase();
-            const isoTime = $(element).find('time').attr('datetime');
+            const isoTime = tgPage(element).find('time').attr('datetime');
 
             if (text && isoTime) {
-                newPosts.push({ id: postId, text, isoTime });
+                newPosts.push({ id: postId, text: text, isoTime: isoTime });
             }
         });
 
-        console.log(`Найдено новых сообщений в ленте: ${newPosts.length}`);
+        console.log('Новых сообщений обнаружено: ' + newPosts.length);
 
         newPosts.sort((a, b) => a.id - b.id);
 
         if (newPosts.length === 0) {
-            console.log('Новых постов для обработки нет.');
+            console.log('Все сообщения актуальны. Обновлений нет.');
             return;
         }
 
         newPosts.forEach(post => {
             let statusFound = null;
-            console.log(`Проверяем пост ID ${post.id}: "${post.text.substring(0, 80)}..."`);
+            console.log('Обработка сообщения ID ' + post.id);
 
             if (post.text.includes('введены ограничения')) {
                 statusFound = 'закрыт';
@@ -144,7 +143,6 @@ async function startParser() {
 
             if (statusFound) {
                 const formattedTime = formatToMSK(post.isoTime);
-                console.log(`-> Найден статус: "${statusFound}" для времени ${formattedTime}`);
 
                 for (const [officialName, searchWords] of Object.entries(airportKeywords)) {
                     const isMentioned = searchWords.some(word => post.text.includes(word));
@@ -157,7 +155,7 @@ async function startParser() {
                         }
                         airport.status = statusFound;
                         airport.time = formattedTime;
-                        console.log(`   [ОБНОВЛЕНИЕ]: ${officialName} -> ${statusFound}`);
+                        console.log('-> Обновлен статус порта ' + officialName + ' на "' + statusFound + '"');
                     }
                 }
             }
@@ -170,10 +168,10 @@ async function startParser() {
         };
 
         fs.writeFileSync('status.json', JSON.stringify(updatedDb, null, 2), 'utf8');
-        console.log(`База успешно обновлена в файле. Новый lastScrapedPostId: ${lastId}`);
+        console.log('Синхронизация завершена успешно. Текущий ID: ' + lastId);
 
     } catch (error) {
-        console.error('Критическая ошибка работы скрипта:', error.message);
+        console.error('Ошибка исполнения:', error.message);
         process.exit(1);
     }
 }
