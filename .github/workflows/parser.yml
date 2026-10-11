@@ -17,7 +17,7 @@ jobs:
 
     # 2. Устанавливаем Node.js окружение
     - name: Setup Node.js
-      uses: actions/with-node@v4
+      uses: actions/setup-node@v4
       with:
         node-version: '20'
 
